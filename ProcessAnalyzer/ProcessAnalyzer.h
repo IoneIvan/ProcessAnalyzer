@@ -8,11 +8,6 @@
 
 #include <cstdint> 
 
-typedef struct {
-	SIZE_T address;
-} AddressResult;
-
-
 class ProcessAnalyzer
 {
 public:
@@ -25,6 +20,7 @@ public:
 		if (snapshot == INVALID_HANDLE_VALUE)
 		{
 			std::cout << "ERROR: " << GetLastError() << std::endl;
+			return nullptr;
 		}
 
 		PROCESSENTRY32 pe32;
@@ -45,7 +41,7 @@ public:
 			} while (Process32Next(snapshot, &pe32));
 		}
 
-		if(snapshot != NULL)
+		if (snapshot != NULL)
 			CloseHandle(snapshot);
 
 		if (pid == 0) {
@@ -98,46 +94,42 @@ public:
 		if (!ReadProcessMemory(process, address, data.data(), byesSize, NULL)) {
 
 			std::cout << "ERROR: " << GetLastError() << std::endl;
+			return std::vector<uint8_t>();
 		}
 		return data;
 	}
 
-	AddressResult* searchProcessMemory(HANDLE process, const BYTE* pattern, SIZE_T patternSize, SIZE_T* resultCount) {
+
+	std::vector<uint32_t> searchProcessMemory(HANDLE process, const std::vector<uint8_t>& pattern) {
 		SYSTEM_INFO sysInfo;
 		GetSystemInfo(&sysInfo);
 
 		MEMORY_BASIC_INFORMATION mbi;
 		SIZE_T address = 0;
-		AddressResult* results = NULL;
-		SIZE_T count = 0;
+		std::vector<uint32_t> foundAddresses;
+
+		SIZE_T patternSize = pattern.size();
 
 		// Iterate through the memory pages
-		while (address < (size_t)sysInfo.lpMaximumApplicationAddress) {
+		while (address < (SIZE_T)sysInfo.lpMaximumApplicationAddress) {
 			if (VirtualQueryEx(process, (LPCVOID)address, &mbi, sizeof(mbi))) {
 
 				// Check if the memory region is readable
 				if (mbi.State == MEM_COMMIT && (mbi.Protect & PAGE_READONLY || mbi.Protect & PAGE_READWRITE || mbi.Protect & PAGE_EXECUTE_READ)) {
-					BYTE* buffer = (BYTE*)malloc(mbi.RegionSize);
-					if (buffer) {
-						SIZE_T bytesRead;
+					std::vector<uint8_t> buffer(mbi.RegionSize);
+					SIZE_T bytesRead;
 
-						// Read the memory region
-						if (ReadProcessMemory(process, (LPCVOID)address, buffer, mbi.RegionSize, &bytesRead)) {
+					// Read the memory region
+					if (ReadProcessMemory(process, (LPCVOID)address, buffer.data(), mbi.RegionSize, &bytesRead)) {
 
-							// Search for the pattern in the read memory
-							for (SIZE_T i = 0; i < bytesRead - patternSize; i++) {
-								if (memcmp(buffer + i, pattern, patternSize) == 0) {
+						// Search for the pattern in the read memory
+						for (SIZE_T i = 0; i < bytesRead - patternSize; i++) {
+							if (memcmp(buffer.data() + i, pattern.data(), patternSize) == 0) {
 
-									// Store the address of the found pattern
-									results = (AddressResult*)realloc(results, sizeof(AddressResult) * (count + 1));
-									if (results) {
-										results[count].address = address + i;
-										count++;
-									}
-								}
+								// Store the address of the found pattern
+								foundAddresses.push_back(static_cast<uint32_t>(address + i));
 							}
 						}
-						free(buffer);
 					}
 				}
 				address += mbi.RegionSize; // Move to the next memory region
@@ -147,8 +139,7 @@ public:
 			}
 		}
 
-		*resultCount = count;
-		return results; // Return the results
+		return foundAddresses; // Return the vector of found addresses
 	}
 };
 
