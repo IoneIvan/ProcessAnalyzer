@@ -8,7 +8,7 @@
 
 #include <cstdint> 
 #include "ProcessAnalyzer.h"
-class ProcessAnalyzerTypeWrapped : public ProcessAnalyzer {
+class ProcessAnalyzerTypeWrapped : protected ProcessAnalyzer {
 
 public:
 
@@ -47,15 +47,22 @@ public:
 
 	// Template function to convert a vector of any trivially copyable type to std::vector<uint8_t>
 	template <typename T>
-	std::vector<uint8_t> convertToUint8Vector(const std::vector<T>& vec) {
+	std::vector<uint8_t> convertToUint8Vector(const std::vector<T>& vec, bool inputBigEndian = true) {
 		static_assert(std::is_trivially_copyable<T>::value, "Type T must be trivially copyable");
 
 		std::vector<uint8_t> byteVector;
 		byteVector.reserve(vec.size() * sizeof(T)); // Reserve space for the bytes
 
 		for (const auto& num : vec) {
+			T value = num;
+
+			// Swap bytes if the input is in big-endian format
+			if (inputBigEndian) {
+				swapBytes(value);
+			}
+
 			uint8_t bytes[sizeof(T)];
-			std::memcpy(bytes, &num, sizeof(T));
+			std::memcpy(bytes, &value, sizeof(T));
 			byteVector.insert(byteVector.end(), bytes, bytes + sizeof(T)); // Append the bytes
 		}
 
@@ -74,7 +81,7 @@ public:
 	}
 
 	template <typename T>
-	T convertToType(const std::vector<uint8_t>& data) {
+	T convertToType(const std::vector<uint8_t>& data, bool targetLittleEndian = true) {
 		if (data.size() < sizeof(T)) {
 			throw std::runtime_error("Not enough data to convert to type T");
 		}
@@ -82,6 +89,23 @@ public:
 		T result;
 		std::memcpy(&result, data.data(), sizeof(T));
 
+		// Check system endianness
+		const bool isLittleEndian = []() {
+			uint16_t num = 1;
+			return *(reinterpret_cast<uint8_t*>(&num)) == 1;
+			}();
+
+		// If the target endianness is different from the system's endianness, swap the bytes
+		if (isLittleEndian != targetLittleEndian) {
+			swapBytes(result);
+		}
+
 		return result;
+	}
+
+	template <typename T>
+	void swapBytes(T& value) {
+		uint8_t* bytePtr = reinterpret_cast<uint8_t*>(&value);
+		std::reverse(bytePtr, bytePtr + sizeof(T));
 	}
 };
