@@ -15,7 +15,18 @@ public:
 	using ProcessAnalyzer::readData;
 	using ProcessAnalyzer::writeData;
 	using ProcessAnalyzer::getProcess;
+	using ProcessAnalyzer::searchProcessMemory;
 
+	float hexToFloat(uint32_t number) {
+		// Use a union to safely convert uint32_t to float
+		union {
+			uint32_t u;
+			float f;
+		} converter;
+
+		converter.u = number;
+		return converter.f;
+	}
 
 	HANDLE getProcess(std::string processName)
 	{
@@ -32,8 +43,16 @@ public:
 		return convertToType<T>(ProcessAnalyzer::readData(process, address, byesSize));
 	}
 
-
-
+	template <typename T>
+	std::vector<uint32_t> searchProcessMemory(HANDLE process, T pattern)
+	{
+		return searchProcessMemory(process, convertToUint8Vector(pattern));
+	}
+	template <typename T>
+	std::vector<uint32_t> searchProcessMemory(HANDLE process, const std::vector<T>& pattern)
+	{
+		return searchProcessMemory(process, convertToUint8Vector(pattern));
+	}
 
 	template <typename T>
 	std::vector<uint8_t> convertToUint8Vector(const T& value) {
